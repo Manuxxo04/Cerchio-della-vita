@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2f6fed" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Cerchio Vita" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<title>Cerchio della Vita</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#ffffff; --text:#17212b; --muted:#6b7785; --line:#d9e0e6;
+    --accent:#2f6fed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{max-width:1150px;margin:0 auto;padding:18px}
+  h1{font-size:28px;margin:0 0 6px}
+  h2{margin:0 0 12px}
+  .sub{color:var(--muted);margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 3px 10px rgba(0,0,0,.04)}
+  .full{grid-column:1/-1}
+  .datebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input[type=date]{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit}
+  .row{display:grid;grid-template-columns:190px 1fr 42px;gap:12px;align-items:center;margin:11px 0}
+  .row label{font-weight:700;display:flex;align-items:center;gap:9px}
+  .dot{width:13px;height:13px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  input[type=range]{width:100%;accent-color:var(--slider-color)}
+  .score{font-weight:800;text-align:center;border-radius:8px;padding:4px 0;color:white}
+  button{border:0;border-radius:12px;padding:11px 15px;font-weight:700;cursor:pointer}
+  .primary{background:var(--accent);color:white}
+  .secondary{background:#e8eefc;color:#214fbe}
+  .danger{background:#fdeaea;color:#a73535}
+  .ghost{background:#f0f3f6;color:#394553}
+  .actions{display:flex;gap:9px;flex-wrap:wrap}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .kpi{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi b{display:block;font-size:24px;margin-top:4px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .tab{background:#eef2f6;color:#334155}
+  .tab.active{background:var(--accent);color:white}
+  canvas{width:100%;max-width:600px;aspect-ratio:1/1;display:block;margin:0 auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left}
+  th{background:#f8fafc;position:sticky;top:0}
+  tr:hover td{background:#fbfcfd}
+  .tag{display:inline-block;padding:5px 9px;border-radius:999px;background:#f0f3f6;color:#394553}
+  .status{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px}
+  .hidden{display:none}
+  .small{font-size:13px;color:var(--muted)}
+  .category-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px;margin-top:10px}
+  .cat-card{border:1px solid var(--line);border-left:6px solid var(--cat);border-radius:12px;padding:11px;background:#fff}
+  .cat-card b{display:block;font-size:22px;margin-top:3px}
+  .history-actions{display:flex;gap:6px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+  .legend span{font-size:12px;padding:4px 8px;border-radius:999px;color:white;font-weight:700}
+  .install-banner{display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;background:#e8eefc;color:#214fbe;align-items:center;justify-content:space-between;gap:10px}
+  .install-banner.show{display:flex}
+  @media(max-width:780px){
+    .grid{grid-template-columns:1fr}
+    .full{grid-column:auto}
+    .row{grid-template-columns:135px 1fr 36px}
+    .kpis{grid-template-columns:1fr}
+    h1{font-size:24px}
+    .wrap{padding:12px}
+    button{padding:10px 12px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="installBanner" class="install-banner">
+    <span><strong>Installa Cerchio della Vita</strong><br><small>Aggiungila alla Home come una vera app.</small></span>
+    <button class="primary" id="installBtn">Installa</button>
+  </div>
+
+  <h1>Cerchio della Vita</h1>
+  <div class="sub">Compila una giornata qualsiasi, modifica quelle passate e confronta mese, anno e media generale.</div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Compila / modifica giornata</h2>
+      <div class="datebar">
+        <button class="ghost" id="prevDayBtn">←</button>
+        <input type="date" id="entryDate">
+        <button class="ghost" id="nextDayBtn">→</button>
+        <button class="secondary" id="todayBtn">Oggi</button>
+      </div>
+      <div id="entryHint" class="small"></div>
+      <div id="sliders"></div>
+      <div class="actions" style="margin-top:14px">
+        <button class="primary" id="saveBtn">Salva giornata</button>
+        <button class="secondary" id="reloadBtn">Ricarica dati salvati</button>
+        <button class="danger" id="deleteSelectedBtn">Elimina giornata</button>
+      </div>
+      <div id="saveStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Riepilogo</h2>
+      <div class="kpis">
+        <div class="kpi">Mese corrente<b id="monthAvg">—</b></div>
+        <div class="kpi">Anno corrente<b id="yearAvg">—</b></div>
+        <div class="kpi">Media generale<b id="allAvg">—</b></div>
+      </div>
+      <div style="margin-top:14px">
+        <span class="tag">Area più carente: <strong id="weakest">—</strong></span>
+      </div>
+    </section>
+
+    <section class="card full">
+      <div class="tabs">
+        <button class="tab active" data-mode="month">Mese</button>
+        <button class="tab" data-mode="year">Anno</button>
+        <button class="tab" data-mode="all">Generale</button>
+      </div>
+      <canvas id="radar" width="760" height="760"></canvas>
+      <div id="legend" class="legend"></div>
+      <div id="categoryAverages"></div>
+    </section>
+
+    <section class="card full">
+      <h2>Storico</h2>
+      <div class="actions" style="margin-bottom:12px">
+        <button class="secondary" id="exportBtn">Esporta backup JSON</button>
+        <button class="secondary" id="importBtn">Importa backup</button>
+        <input id="importFile" type="file" accept=".json,application/json" class="hidden" />
+        <button class="danger" id="clearBtn">Cancella tutti i dati</button>
+      </div>
+      <div style="overflow:auto;max-height:520px">
+        <table>
+          <thead><tr><th>Data</th><th>Media</th><th>Area più bassa</th><th>Azioni</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const CATEGORIES = ["Salute","Amici","Amore","Tempo libero","Spiritualità","Carriera","Denaro","Crescita personale"];
+const COLORS = ["#E74C3C","#F39C12","#F4C542","#63B547","#2FB6A3","#3498DB","#6C5CE7","#D94FA3"];
+const STORAGE_KEY = "cerchioVitaData_v2";
+const OLD_STORAGE_KEY = "cerchioVitaData_v1";
+let mode = "month";
+let deferredPrompt = null;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById("installBanner").classList.add("show");
+});
+document.getElementById("installBtn").addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById("installBanner").classList.remove("show");
+});
+window.addEventListener("appinstalled", () => {
+  document.getElementById("installBanner").classList.remove("show");
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
+}
+
+function localDateKey(date=new Date()){
+  const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,"0"), d=String(date.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
+function dateFromKey(key){ const [y,m,d]=key.split("-").map(Number); return new Date(y,m-1,d); }
+function formatDateIt(key){
+  return dateFromKey(key).toLocaleDateString("it-IT",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"});
+}
+function loadData(){
+  try{
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw){
+      const old = localStorage.getItem(OLD_STORAGE_KEY);
+      if(old){ localStorage.setItem(STORAGE_KEY, old); raw = old; }
+    }
+    return JSON.parse(raw || "{}");
+  }catch{return {}}
+}
+function saveData(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function avg(arr){ const nums=arr.filter(v=>Number.isFinite(v)); return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : null; }
+function fmt(v){ return v==null ? "—" : v.toFixed(2); }
+
+const sliders = document.getElementById("sliders");
+CATEGORIES.forEach((cat,i)=>{
+  const row=document.createElement("div"); row.className="row"; row.style.setProperty("--slider-color", COLORS[i]);
+  row.innerHTML=`<label><span class="dot" style="background:${COLORS[i]}"></span>${cat}</label>
+  <input id="s${i}" type="range" min="1" max="10" step="1" value="5">
+  <div class="score" id="v${i}" style="background:${COLORS[i]}">5</div>`;
+  sliders.appendChild(row);
+  row.querySelector("input").addEventListener("input",e=>document.getElementById("v"+i).textContent=e.target.value);
+});
+document.getElementById("legend").innerHTML = CATEGORIES.map((c,i)=>`<span style="background:${COLORS[i]}">${c}</span>`).join("");
+
+const entryDate = document.getElementById("entryDate");
+entryDate.value = localDateKey();
+
+function getValues(){ return CATEGORIES.map((_,i)=>Number(document.getElementById("s"+i).value)); }
+function setValues(vals){
+  const safe = Array.isArray(vals) && vals.length===8 ? vals : Array(8).fill(5);
+  safe.forEach((v,i)=>{ document.getElementById("s"+i).value=v; document.getElementById("v"+i).textContent=v; });
+}
+function getRecordAverage(rec){ return avg(rec?.values || []); }
+function weakestCategory(rec){
+  if(!rec?.values?.length) return "—";
+  let idx=0; rec.values.forEach((v,i)=>{ if(v<rec.values[idx]) idx=i; }); return CATEGORIES[idx];
+}
+function loadSelectedDate(showMessage=true){
+  const key=entryDate.value; if(!key) return;
+  const rec=loadData()[key];
+  if(rec){
+    setValues(rec.values);
+    document.getElementById("entryHint").textContent = `${formatDateIt(key)} — giornata già salvata, puoi modificarla.`;
+    if(showMessage) document.getElementById("saveStatus").textContent="Dati caricati.";
+  }else{
+    setValues(Array(8).fill(5));
+    document.getElementById("entryHint").textContent = `${formatDateIt(key)} — nessun dato ancora salvato.`;
+    if(showMessage) document.getElementById("saveStatus").textContent="Nessun dato salvato per questa data.";
+  }
+}
+function saveSelectedDate(){
+  const key=entryDate.value; if(!key){ alert("Seleziona una data."); return; }
+  const data=loadData(), existed=!!data[key];
+  data[key]={values:getValues(), updatedAt:new Date().toISOString()};
+  saveData(data);
+  document.getElementById("saveStatus").textContent = existed ? "Giornata aggiornata." : "Giornata salvata.";
+  loadSelectedDate(false); refreshAll();
+}
+function deleteSelectedDate(){
+  const key=entryDate.value, data=loadData();
+  if(!data[key]) return document.getElementById("saveStatus").textContent="Questa giornata non è salvata.";
+  if(confirm(`Eliminare i dati del ${formatDateIt(key)}?`)){
+    delete data[key]; saveData(data); setValues(Array(8).fill(5)); loadSelectedDate(false); refreshAll();
+    document.getElementById("saveStatus").textContent="Giornata eliminata.";
+  }
+}
+function shiftSelectedDate(delta){
+  const d=dateFromKey(entryDate.value || localDateKey()); d.setDate(d.getDate()+delta);
+  entryDate.value=localDateKey(d); loadSelectedDate();
+}
+entryDate.addEventListener("change",()=>loadSelectedDate());
+document.getElementById("prevDayBtn").onclick=()=>shiftSelectedDate(-1);
+document.getElementById("nextDayBtn").onclick=()=>shiftSelectedDate(1);
+document.getElementById("todayBtn").onclick=()=>{entryDate.value=localDateKey();loadSelectedDate();};
+document.getElementById("saveBtn").onclick=saveSelectedDate;
+document.getElementById("reloadBtn").onclick=()=>loadSelectedDate();
+document.getElementById("deleteSelectedBtn").onclick=deleteSelectedDate;
+
+function filteredRecords(which){
+  const data=loadData(), now=new Date();
+  return Object.entries(data).filter(([key])=>{
+    const d=dateFromKey(key);
+    if(which==="month") return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+    if(which==="year") return d.getFullYear()===now.getFullYear();
+    return true;
+  }).map(([date,rec])=>({date,...rec})).sort((a,b)=>a.date.localeCompare(b.date));
+}
+function categoryMeans(which){
+  const recs=filteredRecords(which);
+  return CATEGORIES.map((_,i)=>avg(recs.map(r=>r.values?.[i]).filter(Number.isFinite)));
+}
+function overallMean(which){ return avg(filteredRecords(which).map(getRecordAverage).filter(Number.isFinite)); }
+
+function refreshSummary(){
+  document.getElementById("monthAvg").textContent=fmt(overallMean("month"));
+  document.getElementById("yearAvg").textContent=fmt(overallMean("year"));
+  document.getElementById("allAvg").textContent=fmt(overallMean("all"));
+  const means=categoryMeans(mode), valid=means.map((v,i)=>({v,i})).filter(x=>x.v!=null);
+  if(!valid.length){ document.getElementById("weakest").textContent="—"; document.getElementById("weakest").style.color=""; }
+  else{ valid.sort((a,b)=>a.v-b.v); document.getElementById("weakest").textContent=CATEGORIES[valid[0].i]; document.getElementById("weakest").style.color=COLORS[valid[0].i]; }
+}
+function polygonPoint(cx,cy,r,i,n){ const a=-Math.PI/2+i*2*Math.PI/n; return [cx+Math.cos(a)*r, cy+Math.sin(a)*r]; }
+function drawRadar(){
+  const canvas=document.getElementById("radar"), ctx=canvas.getContext("2d");
+  const vals=categoryMeans(mode), w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,r=Math.min(w,h)*0.33,n=CATEGORIES.length;
+  ctx.clearRect(0,0,w,h);
+  for(let i=0;i<n;i++){
+    const a1=-Math.PI/2+(i-.5)*2*Math.PI/n, a2=-Math.PI/2+(i+.5)*2*Math.PI/n;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a1,a2);ctx.closePath();ctx.fillStyle=COLORS[i]+"20";ctx.fill();
+  }
+  for(let ring=1;ring<=10;ring++){
+    ctx.beginPath();
+    for(let i=0;i<n;i++){ const [x,y]=polygonPoint(cx,cy,r*ring/10,i,n); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+    ctx.closePath();ctx.strokeStyle=ring===10?"#9aa7b3":"#d8dee6";ctx.lineWidth=ring===10?1.5:1;ctx.stroke();
+  }
+  for(let i=0;i<n;i++){ const [x,y]=polygonPoint(cx,cy,r,i,n);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(x,y);ctx.strokeStyle="#d7dde4";ctx.stroke(); }
+  ctx.font="700 16px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(let i=0;i<n;i++){ const [lx,ly]=polygonPoint(cx,cy,r+62,i,n);ctx.fillStyle=COLORS[i];ctx.fillText(CATEGORIES[i],lx,ly); }
+  if(vals.some(v=>v!=null)){
+    ctx.beginPath();
+    vals.forEach((v,i)=>{const [x,y]=polygonPoint(cx,cy,r*(v==null?0:v)/10,i,n);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.closePath();ctx.fillStyle="rgba(25,35,45,.15)";ctx.fill();ctx.strokeStyle="#1f2937";ctx.lineWidth=3;ctx.stroke();
+    vals.forEach((v,i)=>{if(v==null)return;const [x,y]=polygonPoint(cx,cy,r*v/10,i,n);ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=COLORS[i];ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();});
+  }
+}
+function renderCategoryAverages(){
+  const vals=categoryMeans(mode), title=mode==="month"?"Media del mese corrente":mode==="year"?"Media dell'anno corrente":"Media generale";
+  document.getElementById("categoryAverages").innerHTML=`<strong>${title}</strong><div class="category-grid">`+
+  CATEGORIES.map((c,i)=>`<div class="cat-card" style="--cat:${COLORS[i]}"><span>${c}</span><b style="color:${COLORS[i]}">${fmt(vals[i])}</b></div>`).join("")+`</div>`;
+}
+function renderHistory(){
+  const body=document.getElementById("historyBody"), rows=Object.entries(loadData()).sort((a,b)=>b[0].localeCompare(a[0]));
+  body.innerHTML=rows.length?rows.map(([date,rec])=>{
+    const weak=weakestCategory(rec), idx=CATEGORIES.indexOf(weak);
+    return `<tr><td>${formatDateIt(date)}</td><td><strong>${fmt(getRecordAverage(rec))}</strong></td>
+    <td>${idx>=0?`<span style="color:${COLORS[idx]};font-weight:700">${weak}</span>`:"—"}</td>
+    <td><div class="history-actions"><button class="secondary" onclick="editDay('${date}')">Modifica</button><button class="danger" onclick="deleteDay('${date}')">Elimina</button></div></td></tr>`;
+  }).join(""):`<tr><td colspan="4" class="small">Nessun dato salvato.</td></tr>`;
+}
+window.editDay=function(date){ entryDate.value=date; loadSelectedDate(); window.scrollTo({top:0,behavior:"smooth"}); }
+window.deleteDay=function(date){ const data=loadData(); if(confirm(`Eliminare i dati del ${formatDateIt(date)}?`)){delete data[date];saveData(data);if(entryDate.value===date)loadSelectedDate(false);refreshAll();} }
+
+document.querySelectorAll(".tab").forEach(btn=>btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));btn.classList.add("active");mode=btn.dataset.mode;refreshAll();});
+document.getElementById("exportBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify(loadData(),null,2)],{type:"application/json"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download="cerchio-vita-backup.json";a.click();URL.revokeObjectURL(a.href);
+};
+document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
+document.getElementById("importFile").addEventListener("change",async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{const parsed=JSON.parse(await f.text());if(typeof parsed!=="object"||Array.isArray(parsed))throw new Error();saveData(parsed);loadSelectedDate(false);refreshAll();alert("Backup importato.");}
+  catch{alert("File non valido.");}
+  e.target.value="";
+});
+document.getElementById("clearBtn").onclick=()=>{if(confirm("Vuoi cancellare TUTTI i dati salvati?")){localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(OLD_STORAGE_KEY);loadSelectedDate(false);refreshAll();}};
+function refreshAll(){refreshSummary();drawRadar();renderCategoryAverages();renderHistory();}
+loadSelectedDate(false);refreshAll();
+</script>
+</body>
+</html>
