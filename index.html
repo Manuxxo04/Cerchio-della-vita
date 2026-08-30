@@ -32,6 +32,9 @@
   .dot{width:13px;height:13px;border-radius:50%;display:inline-block;flex:0 0 auto}
   input[type=range]{width:100%;accent-color:var(--slider-color)}
   .score{font-weight:800;text-align:center;border-radius:8px;padding:4px 0;color:white}
+  .bonusCtl{display:flex;gap:5px;align-items:center;justify-content:flex-end}
+  .bonusBtn{padding:5px 8px!important;border-radius:8px!important}
+  .row{grid-template-columns:170px 1fr 42px 95px}
   button{border:0;border-radius:12px;padding:11px 15px;font-weight:700;cursor:pointer}
   .primary{background:var(--accent);color:white}
   .secondary{background:#e8eefc;color:#214fbe}
@@ -39,6 +42,9 @@
   .ghost{background:#f0f3f6;color:#394553}
   .actions{display:flex;gap:9px;flex-wrap:wrap}
   .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .macrogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .macro{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .macro b{display:block;font-size:22px;margin-top:4px}.macro small{color:var(--muted)}
   .kpi{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:14px}
   .kpi b{display:block;font-size:24px;margin-top:4px}
   .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -64,8 +70,8 @@
   @media(max-width:780px){
     .grid{grid-template-columns:1fr}
     .full{grid-column:auto}
-    .row{grid-template-columns:135px 1fr 36px}
-    .kpis{grid-template-columns:1fr}
+    .row{grid-template-columns:125px 1fr 36px}.bonusCtl{grid-column:2/4;justify-content:flex-start;margin-top:-6px}
+    .kpis,.macrogrid{grid-template-columns:1fr}
     h1{font-size:24px}
     .wrap{padding:12px}
     button{padding:10px 12px}
@@ -107,6 +113,12 @@
         <div class="kpi">Mese corrente<b id="monthAvg">—</b></div>
         <div class="kpi">Anno corrente<b id="yearAvg">—</b></div>
         <div class="kpi">Media generale<b id="allAvg">—</b></div>
+      </div>
+
+      <div class="macrogrid">
+        <div class="macro"><span>🧠 Equilibrio mentale</span><b id="mentalAvg">—</b><small>Salute + Spiritualità</small></div>
+        <div class="macro"><span>📈 Produttività</span><b id="productivityAvg">—</b><small>Denaro + Carriera + Crescita personale</small></div>
+        <div class="macro"><span>❤️ Relax / Passione</span><b id="relaxAvg">—</b><small>Amore + Amici + Tempo libero</small></div>
       </div>
       <div style="margin-top:14px">
         <span class="tag">Area più carente: <strong id="weakest">—</strong></span>
@@ -178,6 +190,16 @@ function dateFromKey(key){ const [y,m,d]=key.split("-").map(Number); return new 
 function formatDateIt(key){
   return dateFromKey(key).toLocaleDateString("it-IT",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"});
 }
+function normalizeRecord(rec){
+  if(!rec) return null;
+  const base = Array.isArray(rec.base) ? rec.base : rec.values;
+  if(!Array.isArray(base) || base.length !== 8) return null;
+  const bonus = Array.isArray(rec.bonus) && rec.bonus.length === 8 ? rec.bonus : Array(8).fill(0);
+  return {base:base.map(Number), bonus:bonus.map(x=>Math.max(0,Number(x)||0)), updatedAt:rec.updatedAt||null};
+}
+function effectiveValues(rec){
+  const n=normalizeRecord(rec); return n ? n.base.map((v,i)=>v+n.bonus[i]) : [];
+}
 function loadData(){
   try{
     let raw = localStorage.getItem(STORAGE_KEY);
@@ -197,7 +219,8 @@ CATEGORIES.forEach((cat,i)=>{
   const row=document.createElement("div"); row.className="row"; row.style.setProperty("--slider-color", COLORS[i]);
   row.innerHTML=`<label><span class="dot" style="background:${COLORS[i]}"></span>${cat}</label>
   <input id="s${i}" type="range" min="1" max="10" step="1" value="5">
-  <div class="score" id="v${i}" style="background:${COLORS[i]}">5</div>`;
+  <div class="score" id="v${i}" style="background:${COLORS[i]}">5</div>
+  <div class="bonusCtl"><button type="button" class="ghost bonusBtn" onclick="changeBonus(${i},-1)">−</button><strong id="b${i}">+0</strong><button type="button" class="ghost bonusBtn" onclick="changeBonus(${i},1)">+</button></div>`;
   sliders.appendChild(row);
   row.querySelector("input").addEventListener("input",e=>document.getElementById("v"+i).textContent=e.target.value);
 });
@@ -206,25 +229,39 @@ document.getElementById("legend").innerHTML = CATEGORIES.map((c,i)=>`<span style
 const entryDate = document.getElementById("entryDate");
 entryDate.value = localDateKey();
 
-function getValues(){ return CATEGORIES.map((_,i)=>Number(document.getElementById("s"+i).value)); }
-function setValues(vals){
-  const safe = Array.isArray(vals) && vals.length===8 ? vals : Array(8).fill(5);
-  safe.forEach((v,i)=>{ document.getElementById("s"+i).value=v; document.getElementById("v"+i).textContent=v; });
+window.changeBonus=function(i,delta){
+  const el=document.getElementById("b"+i);
+  const current=Number(el.textContent.replace("+",""))||0;
+  el.textContent="+"+Math.max(0,current+delta);
 }
-function getRecordAverage(rec){ return avg(rec?.values || []); }
+function getFormRecord(){
+  return {
+    base:CATEGORIES.map((_,i)=>Number(document.getElementById("s"+i).value)),
+    bonus:CATEGORIES.map((_,i)=>Number(document.getElementById("b"+i).textContent.replace("+",""))||0)
+  };
+}
+function setValues(rec){
+  const n=normalizeRecord(rec) || {base:Array(8).fill(5),bonus:Array(8).fill(0)};
+  n.base.forEach((v,i)=>{
+    document.getElementById("s"+i).value=v;
+    document.getElementById("v"+i).textContent=v;
+    document.getElementById("b"+i).textContent="+"+n.bonus[i];
+  });
+}
+function getRecordAverage(rec){ return avg(effectiveValues(rec)); }
 function weakestCategory(rec){
-  if(!rec?.values?.length) return "—";
-  let idx=0; rec.values.forEach((v,i)=>{ if(v<rec.values[idx]) idx=i; }); return CATEGORIES[idx];
+  const v=effectiveValues(rec); if(!v.length) return "—";
+  let idx=0; v.forEach((x,i)=>{if(x<v[idx])idx=i;}); return CATEGORIES[idx];
 }
 function loadSelectedDate(showMessage=true){
   const key=entryDate.value; if(!key) return;
   const rec=loadData()[key];
   if(rec){
-    setValues(rec.values);
+    setValues(rec);
     document.getElementById("entryHint").textContent = `${formatDateIt(key)} — giornata già salvata, puoi modificarla.`;
     if(showMessage) document.getElementById("saveStatus").textContent="Dati caricati.";
   }else{
-    setValues(Array(8).fill(5));
+    setValues(null);
     document.getElementById("entryHint").textContent = `${formatDateIt(key)} — nessun dato ancora salvato.`;
     if(showMessage) document.getElementById("saveStatus").textContent="Nessun dato salvato per questa data.";
   }
@@ -232,7 +269,7 @@ function loadSelectedDate(showMessage=true){
 function saveSelectedDate(){
   const key=entryDate.value; if(!key){ alert("Seleziona una data."); return; }
   const data=loadData(), existed=!!data[key];
-  data[key]={values:getValues(), updatedAt:new Date().toISOString()};
+  data[key]={...getFormRecord(), updatedAt:new Date().toISOString()};
   saveData(data);
   document.getElementById("saveStatus").textContent = existed ? "Giornata aggiornata." : "Giornata salvata.";
   loadSelectedDate(false); refreshAll();
@@ -241,7 +278,7 @@ function deleteSelectedDate(){
   const key=entryDate.value, data=loadData();
   if(!data[key]) return document.getElementById("saveStatus").textContent="Questa giornata non è salvata.";
   if(confirm(`Eliminare i dati del ${formatDateIt(key)}?`)){
-    delete data[key]; saveData(data); setValues(Array(8).fill(5)); loadSelectedDate(false); refreshAll();
+    delete data[key]; saveData(data); setValues(null); loadSelectedDate(false); refreshAll();
     document.getElementById("saveStatus").textContent="Giornata eliminata.";
   }
 }
@@ -268,14 +305,28 @@ function filteredRecords(which){
 }
 function categoryMeans(which){
   const recs=filteredRecords(which);
-  return CATEGORIES.map((_,i)=>avg(recs.map(r=>r.values?.[i]).filter(Number.isFinite)));
+  return CATEGORIES.map((_,i)=>avg(recs.map(r=>effectiveValues(r)[i]).filter(Number.isFinite)));
 }
+
+function macroMeans(which){
+  const m=categoryMeans(which);
+  return {
+    mental:avg([m[0],m[4]].filter(Number.isFinite)),
+    productivity:avg([m[6],m[5],m[7]].filter(Number.isFinite)),
+    relax:avg([m[2],m[1],m[3]].filter(Number.isFinite))
+  };
+}
+
 function overallMean(which){ return avg(filteredRecords(which).map(getRecordAverage).filter(Number.isFinite)); }
 
 function refreshSummary(){
   document.getElementById("monthAvg").textContent=fmt(overallMean("month"));
   document.getElementById("yearAvg").textContent=fmt(overallMean("year"));
   document.getElementById("allAvg").textContent=fmt(overallMean("all"));
+  const macro=macroMeans(mode);
+  document.getElementById("mentalAvg").textContent=fmt(macro.mental);
+  document.getElementById("productivityAvg").textContent=fmt(macro.productivity);
+  document.getElementById("relaxAvg").textContent=fmt(macro.relax);
   const means=categoryMeans(mode), valid=means.map((v,i)=>({v,i})).filter(x=>x.v!=null);
   if(!valid.length){ document.getElementById("weakest").textContent="—"; document.getElementById("weakest").style.color=""; }
   else{ valid.sort((a,b)=>a.v-b.v); document.getElementById("weakest").textContent=CATEGORIES[valid[0].i]; document.getElementById("weakest").style.color=COLORS[valid[0].i]; }
@@ -284,7 +335,9 @@ function polygonPoint(cx,cy,r,i,n){ const a=-Math.PI/2+i*2*Math.PI/n; return [cx
 function drawRadar(){
   const canvas=document.getElementById("radar"), ctx=canvas.getContext("2d");
   const vals=categoryMeans(mode), w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,r=Math.min(w,h)*0.33,n=CATEGORIES.length;
+  const maxScale=Math.max(10, Math.ceil(Math.max(10,...vals.filter(Number.isFinite))/2)*2);
   ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#6b7785";ctx.font="13px system-ui";ctx.textAlign="left";ctx.fillText("Scala max: "+maxScale,14,22);
   for(let i=0;i<n;i++){
     const a1=-Math.PI/2+(i-.5)*2*Math.PI/n, a2=-Math.PI/2+(i+.5)*2*Math.PI/n;
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a1,a2);ctx.closePath();ctx.fillStyle=COLORS[i]+"20";ctx.fill();
@@ -299,9 +352,9 @@ function drawRadar(){
   for(let i=0;i<n;i++){ const [lx,ly]=polygonPoint(cx,cy,r+62,i,n);ctx.fillStyle=COLORS[i];ctx.fillText(CATEGORIES[i],lx,ly); }
   if(vals.some(v=>v!=null)){
     ctx.beginPath();
-    vals.forEach((v,i)=>{const [x,y]=polygonPoint(cx,cy,r*(v==null?0:v)/10,i,n);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    vals.forEach((v,i)=>{const [x,y]=polygonPoint(cx,cy,r*(v==null?0:v)/maxScale,i,n);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
     ctx.closePath();ctx.fillStyle="rgba(25,35,45,.15)";ctx.fill();ctx.strokeStyle="#1f2937";ctx.lineWidth=3;ctx.stroke();
-    vals.forEach((v,i)=>{if(v==null)return;const [x,y]=polygonPoint(cx,cy,r*v/10,i,n);ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=COLORS[i];ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();});
+    vals.forEach((v,i)=>{if(v==null)return;const [x,y]=polygonPoint(cx,cy,r*v/maxScale,i,n);ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=COLORS[i];ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();});
   }
 }
 function renderCategoryAverages(){
