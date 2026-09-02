@@ -42,9 +42,10 @@
   .ghost{background:#f0f3f6;color:#394553}
   .actions{display:flex;gap:9px;flex-wrap:wrap}
   .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .macrogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .macrogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
   .macro{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px}
-  .macro b{display:block;font-size:22px;margin-top:4px}.macro small{color:var(--muted)}
+  .macro b{display:block;font-size:24px;margin-top:4px}.macro small{color:var(--muted)}
+  .macroTitle{font-size:20px;font-weight:800;margin-top:20px}
   .kpi{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:14px}
   .kpi b{display:block;font-size:24px;margin-top:4px}
   .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -71,7 +72,7 @@
     .grid{grid-template-columns:1fr}
     .full{grid-column:auto}
     .row{grid-template-columns:125px 1fr 36px}.bonusCtl{grid-column:2/4;justify-content:flex-start;margin-top:-6px}
-    .kpis,.macrogrid{grid-template-columns:1fr}
+    .macrogrid{grid-template-columns:1fr}
     h1{font-size:24px}
     .wrap{padding:12px}
     button{padding:10px 12px}
@@ -89,7 +90,7 @@
   <div class="sub">Compila una giornata qualsiasi, modifica quelle passate e confronta mese, anno e media generale.</div>
 
   <div class="grid">
-    <section class="card">
+    <section class="card full">
       <h2>Compila / modifica giornata</h2>
       <div class="datebar">
         <button class="ghost" id="prevDayBtn">←</button>
@@ -107,24 +108,6 @@
       <div id="saveStatus" class="status"></div>
     </section>
 
-    <section class="card">
-      <h2>Riepilogo</h2>
-      <div class="kpis">
-        <div class="kpi">Mese corrente<b id="monthAvg">—</b></div>
-        <div class="kpi">Anno corrente<b id="yearAvg">—</b></div>
-        <div class="kpi">Media generale<b id="allAvg">—</b></div>
-      </div>
-
-      <div class="macrogrid">
-        <div class="macro"><span>🧠 Equilibrio mentale</span><b id="mentalAvg">—</b><small>Salute + Spiritualità</small></div>
-        <div class="macro"><span>📈 Produttività</span><b id="productivityAvg">—</b><small>Denaro + Carriera + Crescita personale</small></div>
-        <div class="macro"><span>❤️ Relax / Passione</span><b id="relaxAvg">—</b><small>Amore + Amici + Tempo libero</small></div>
-      </div>
-      <div style="margin-top:14px">
-        <span class="tag">Area più carente: <strong id="weakest">—</strong></span>
-      </div>
-    </section>
-
     <section class="card full">
       <div class="tabs">
         <button class="tab active" data-mode="month">Mese</button>
@@ -134,6 +117,24 @@
       <canvas id="radar" width="760" height="760"></canvas>
       <div id="legend" class="legend"></div>
       <div id="categoryAverages"></div>
+      <div class="macroTitle">Macro-aree</div>
+      <div class="macrogrid">
+        <div class="macro">
+          <span>🧠 Equilibrio mentale</span>
+          <b id="mentalAvg">—</b>
+          <small>Salute + Spiritualità</small>
+        </div>
+        <div class="macro">
+          <span>📈 Produttività</span>
+          <b id="productivityAvg">—</b>
+          <small>Denaro + Carriera + Crescita personale</small>
+        </div>
+        <div class="macro">
+          <span>❤️ Relax / Passione</span>
+          <b id="relaxAvg">—</b>
+          <small>Amore + Amici + Tempo libero</small>
+        </div>
+      </div>
     </section>
 
     <section class="card full">
@@ -320,41 +321,125 @@ function macroMeans(which){
 function overallMean(which){ return avg(filteredRecords(which).map(getRecordAverage).filter(Number.isFinite)); }
 
 function refreshSummary(){
-  document.getElementById("monthAvg").textContent=fmt(overallMean("month"));
-  document.getElementById("yearAvg").textContent=fmt(overallMean("year"));
-  document.getElementById("allAvg").textContent=fmt(overallMean("all"));
   const macro=macroMeans(mode);
   document.getElementById("mentalAvg").textContent=fmt(macro.mental);
   document.getElementById("productivityAvg").textContent=fmt(macro.productivity);
   document.getElementById("relaxAvg").textContent=fmt(macro.relax);
-  const means=categoryMeans(mode), valid=means.map((v,i)=>({v,i})).filter(x=>x.v!=null);
-  if(!valid.length){ document.getElementById("weakest").textContent="—"; document.getElementById("weakest").style.color=""; }
-  else{ valid.sort((a,b)=>a.v-b.v); document.getElementById("weakest").textContent=CATEGORIES[valid[0].i]; document.getElementById("weakest").style.color=COLORS[valid[0].i]; }
 }
-function polygonPoint(cx,cy,r,i,n){ const a=-Math.PI/2+i*2*Math.PI/n; return [cx+Math.cos(a)*r, cy+Math.sin(a)*r]; }
+function polarPoint(cx,cy,r,angle){
+  return [cx+Math.cos(angle)*r, cy+Math.sin(angle)*r];
+}
+function wrapLabel(ctx,text,x,y,maxWidth,lineHeight){
+  const words=text.split(" ");
+  const lines=[]; let line="";
+  words.forEach(word=>{
+    const test=line ? line+" "+word : word;
+    if(ctx.measureText(test).width>maxWidth && line){ lines.push(line); line=word; }
+    else line=test;
+  });
+  if(line) lines.push(line);
+  const startY=y-((lines.length-1)*lineHeight)/2;
+  lines.forEach((ln,i)=>ctx.fillText(ln,x,startY+i*lineHeight));
+}
 function drawRadar(){
   const canvas=document.getElementById("radar"), ctx=canvas.getContext("2d");
-  const vals=categoryMeans(mode), w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,r=Math.min(w,h)*0.33,n=CATEGORIES.length;
-  const maxScale=Math.max(10, Math.ceil(Math.max(10,...vals.filter(Number.isFinite))/2)*2);
+  const sourceVals=categoryMeans(mode);
+
+  // Ordine visivo come nel cerchio di riferimento:
+  // Salute → Amici → Amore → Tempo libero → Crescita personale → Carriera → Denaro → Spiritualità
+  const displayOrder=[0,1,2,3,7,5,6,4];
+  const vals=displayOrder.map(i=>sourceVals[i]);
+  const labels=displayOrder.map(i=>CATEGORIES[i]);
+  const colors=displayOrder.map(i=>COLORS[i]);
+
+  const w=canvas.width,h=canvas.height,cx=w/2,cy=h/2+8;
+  const r=Math.min(w,h)*0.32;
+  const n=8;
+  const maxValue=Math.max(10,...vals.filter(Number.isFinite));
+  const maxScale=Math.max(10,Math.ceil(maxValue));
+  const boundaryStart=-Math.PI/2;
+  const sector=Math.PI*2/n;
+
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle="#6b7785";ctx.font="13px system-ui";ctx.textAlign="left";ctx.fillText("Scala max: "+maxScale,14,22);
-  for(let i=0;i<n;i++){
-    const a1=-Math.PI/2+(i-.5)*2*Math.PI/n, a2=-Math.PI/2+(i+.5)*2*Math.PI/n;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a1,a2);ctx.closePath();ctx.fillStyle=COLORS[i]+"20";ctx.fill();
-  }
-  for(let ring=1;ring<=10;ring++){
+
+  // Fette colorate fino al valore medio di ciascuna area.
+  vals.forEach((v,i)=>{
+    if(v==null) return;
+    const rr=r*Math.min(v,maxScale)/maxScale;
+    const a1=boundaryStart+i*sector;
+    const a2=a1+sector;
     ctx.beginPath();
-    for(let i=0;i<n;i++){ const [x,y]=polygonPoint(cx,cy,r*ring/10,i,n); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
-    ctx.closePath();ctx.strokeStyle=ring===10?"#9aa7b3":"#d8dee6";ctx.lineWidth=ring===10?1.5:1;ctx.stroke();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,rr,a1,a2);
+    ctx.closePath();
+    ctx.fillStyle=colors[i]+"55";
+    ctx.fill();
+  });
+
+  // Dieci cerchi concentrici, come nel modello originale.
+  for(let ring=1; ring<=10; ring++){
+    ctx.beginPath();
+    ctx.arc(cx,cy,r*ring/10,0,Math.PI*2);
+    ctx.strokeStyle=ring===10 ? "#707b86" : "#cbd3da";
+    ctx.lineWidth=ring===10 ? 2 : 1;
+    ctx.stroke();
   }
-  for(let i=0;i<n;i++){ const [x,y]=polygonPoint(cx,cy,r,i,n);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(x,y);ctx.strokeStyle="#d7dde4";ctx.stroke(); }
-  ctx.font="700 16px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
-  for(let i=0;i<n;i++){ const [lx,ly]=polygonPoint(cx,cy,r+62,i,n);ctx.fillStyle=COLORS[i];ctx.fillText(CATEGORIES[i],lx,ly); }
+
+  // Otto raggi: ogni categoria occupa una sezione distinta.
+  for(let i=0;i<n;i++){
+    const a=boundaryStart+i*sector;
+    const [x,y]=polarPoint(cx,cy,r,a);
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(x,y);
+    ctx.strokeStyle="#59636e";
+    ctx.lineWidth=1.6;
+    ctx.stroke();
+  }
+
+  // Contorno dei valori medi.
   if(vals.some(v=>v!=null)){
     ctx.beginPath();
-    vals.forEach((v,i)=>{const [x,y]=polygonPoint(cx,cy,r*(v==null?0:v)/maxScale,i,n);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-    ctx.closePath();ctx.fillStyle="rgba(25,35,45,.15)";ctx.fill();ctx.strokeStyle="#1f2937";ctx.lineWidth=3;ctx.stroke();
-    vals.forEach((v,i)=>{if(v==null)return;const [x,y]=polygonPoint(cx,cy,r*v/maxScale,i,n);ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=COLORS[i];ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();});
+    vals.forEach((v,i)=>{
+      const angle=boundaryStart+(i+.5)*sector;
+      const [x,y]=polarPoint(cx,cy,r*(v==null?0:v)/maxScale,angle);
+      i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle="#1f2937";
+    ctx.lineWidth=3;
+    ctx.stroke();
+
+    vals.forEach((v,i)=>{
+      if(v==null) return;
+      const angle=boundaryStart+(i+.5)*sector;
+      const [x,y]=polarPoint(cx,cy,r*v/maxScale,angle);
+      ctx.beginPath();
+      ctx.arc(x,y,5.5,0,Math.PI*2);
+      ctx.fillStyle=colors[i];
+      ctx.fill();
+      ctx.strokeStyle="#fff";
+      ctx.lineWidth=2;
+      ctx.stroke();
+    });
+  }
+
+  // Etichette al centro delle otto sezioni.
+  ctx.font="700 16px system-ui";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  labels.forEach((label,i)=>{
+    const angle=boundaryStart+(i+.5)*sector;
+    const [lx,ly]=polarPoint(cx,cy,r+68,angle);
+    ctx.fillStyle=colors[i];
+    wrapLabel(ctx,label,lx,ly,125,18);
+  });
+
+  if(maxScale>10){
+    ctx.fillStyle="#6b7785";
+    ctx.font="13px system-ui";
+    ctx.textAlign="left";
+    ctx.fillText("Scala max: "+maxScale,14,22);
   }
 }
 function renderCategoryAverages(){
