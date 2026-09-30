@@ -1,0 +1,29 @@
+CERCHIO DELLA VITA — sincronizzazione con Google Sheets
+
+Il foglio con lo storico è già stato creato:
+https://docs.google.com/spreadsheets/d/1Kl-W_TBjjRbmwhbO4WIOrIMvyaNPGBxwm6pnQn4_DIY/edit
+
+Lo ZIP contiene index.html, service-worker.js e manifest.json. Nel repository
+GitHub della PWA sostituisci questi tre file e conserva icon-192.png e
+icon-512.png già presenti. La versione online non cambia finché non pubblichi
+i file aggiornati.
+
+L'ID client OAuth che hai fornito è già inserito: i file sono pronti da caricare
+nel repository. L'accesso Google va verificato dopo la pubblicazione.
+La configurazione nel progetto Google Cloud deve includere Google Sheets API
+abilitata, il tuo account tra gli utenti di test e l'origine JavaScript
+autorizzata: https://manuxxo04.github.io
+
+Apri la PWA aggiornata e premi "Collega Google". Autorizza l'account che può
+modificare il foglio. I dati locali si confrontano con quelli del foglio usando
+la data e il campo "Aggiornato il"; prevale la modifica più recente. I punti
+base e bonus restano separati. Anche le eliminazioni vengono sincronizzate.
+
+La PWA conserva una copia locale per l'uso senza Internet. Dopo aver salvato
+offline, collegati e premi "Sincronizza ora". Puoi sempre esportare il backup
+JSON. Il token Google resta solo nella memoria della pagina e va richiesto di
+nuovo dopo un riavvio o alla scadenza.
+
+Quando chiedi a ChatGPT di aggiornare un giorno nel foglio, specifica i valori
+base e bonus e fai aggiornare la colonna "Aggiornato il" con l'ora ISO corrente
+(UTC), altrimenti la PWA non può risolvere in modo affidabile i conflitti.

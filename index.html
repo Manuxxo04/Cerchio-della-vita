@@ -10,6 +10,7 @@
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <title>Cerchio della Vita</title>
 <style>
   :root{
@@ -68,6 +69,8 @@
   .legend span{font-size:12px;padding:4px 8px;border-radius:999px;color:white;font-weight:700}
   .install-banner{display:none;margin-bottom:14px;padding:12px 14px;border-radius:12px;background:#e8eefc;color:#214fbe;align-items:center;justify-content:space-between;gap:10px}
   .install-banner.show{display:flex}
+  .sync-panel{margin-bottom:16px}
+  .sync-panel p{margin:4px 0 10px}
   @media(max-width:780px){
     .grid{grid-template-columns:1fr}
     .full{grid-column:auto}
@@ -88,6 +91,13 @@
 
   <h1>Cerchio della Vita</h1>
   <div class="sub">Compila una giornata qualsiasi, modifica quelle passate e confronta mese, anno e media generale.</div>
+
+  <section class="card sync-panel">
+    <h2>Sincronizzazione</h2>
+    <p class="small">I dati restano disponibili sul dispositivo anche senza Internet. Collegati a Google per allinearli con il foglio e con gli aggiornamenti fatti da ChatGPT.</p>
+    <div class="actions"><button class="primary" id="connectBtn">Collega Google</button><button class="secondary" id="syncBtn" disabled>Sincronizza ora</button></div>
+    <div id="syncStatus" class="status" role="status" aria-live="polite">Dati salvati solo su questo dispositivo.</div>
+  </section>
 
   <div class="grid">
     <section class="card full">
@@ -160,6 +170,17 @@ const CATEGORIES = ["Salute","Amici","Amore","Tempo libero","Spiritualità","Car
 const COLORS = ["#E74C3C","#F39C12","#F4C542","#63B547","#2FB6A3","#3498DB","#6C5CE7","#D94FA3"];
 const STORAGE_KEY = "cerchioVitaData_v2";
 const OLD_STORAGE_KEY = "cerchioVitaData_v1";
+const TOMBSTONES_KEY = "cerchioVitaDeleted_v1";
+const CLEAR_AT_KEY = "cerchioVitaClearAt_v1";
+const SHEET_ID = "1Kl-W_TBjjRbmwhbO4WIOrIMvyaNPGBxwm6pnQn4_DIY";
+// Inserisci qui l'ID client OAuth di tipo "Applicazione web" del tuo progetto Google Cloud.
+const GOOGLE_CLIENT_ID = "407846094067-1go2efug0j9irgavu8okgrbfnb88gvfr.apps.googleusercontent.com";
+const SHEET_RANGE = "Giornate!A2:S";
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+let accessToken = null;
+let tokenExpires = 0;
+let tokenClient = null;
+let syncQueue = Promise.resolve();
 let mode = "month";
 let deferredPrompt = null;
 
@@ -212,6 +233,8 @@ function loadData(){
   }catch{return {}}
 }
 function saveData(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function loadTombstones(){ try { return JSON.parse(localStorage.getItem(TOMBSTONES_KEY)||"{}"); } catch { return {}; } }
+function saveTombstones(data){ localStorage.setItem(TOMBSTONES_KEY,JSON.stringify(data)); }
 function avg(arr){ const nums=arr.filter(v=>Number.isFinite(v)); return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : null; }
 function fmt(v){ return v==null ? "—" : v.toFixed(2); }
 
@@ -272,15 +295,18 @@ function saveSelectedDate(){
   const data=loadData(), existed=!!data[key];
   data[key]={...getFormRecord(), updatedAt:new Date().toISOString()};
   saveData(data);
+  const deleted=loadTombstones(); delete deleted[key]; saveTombstones(deleted);
   document.getElementById("saveStatus").textContent = existed ? "Giornata aggiornata." : "Giornata salvata.";
   loadSelectedDate(false); refreshAll();
+  queueSync();
 }
 function deleteSelectedDate(){
   const key=entryDate.value, data=loadData();
   if(!data[key]) return document.getElementById("saveStatus").textContent="Questa giornata non è salvata.";
   if(confirm(`Eliminare i dati del ${formatDateIt(key)}?`)){
-    delete data[key]; saveData(data); setValues(null); loadSelectedDate(false); refreshAll();
+    delete data[key]; saveData(data); const deleted=loadTombstones(); deleted[key]=new Date().toISOString(); saveTombstones(deleted); setValues(null); loadSelectedDate(false); refreshAll();
     document.getElementById("saveStatus").textContent="Giornata eliminata.";
+    queueSync();
   }
 }
 function shiftSelectedDate(delta){
@@ -457,7 +483,7 @@ function renderHistory(){
   }).join(""):`<tr><td colspan="4" class="small">Nessun dato salvato.</td></tr>`;
 }
 window.editDay=function(date){ entryDate.value=date; loadSelectedDate(); window.scrollTo({top:0,behavior:"smooth"}); }
-window.deleteDay=function(date){ const data=loadData(); if(confirm(`Eliminare i dati del ${formatDateIt(date)}?`)){delete data[date];saveData(data);if(entryDate.value===date)loadSelectedDate(false);refreshAll();} }
+window.deleteDay=function(date){ const data=loadData(); if(confirm(`Eliminare i dati del ${formatDateIt(date)}?`)){delete data[date];saveData(data);const deleted=loadTombstones();deleted[date]=new Date().toISOString();saveTombstones(deleted);if(entryDate.value===date)loadSelectedDate(false);refreshAll();queueSync();} }
 
 document.querySelectorAll(".tab").forEach(btn=>btn.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));btn.classList.add("active");mode=btn.dataset.mode;refreshAll();});
 document.getElementById("exportBtn").onclick=()=>{
@@ -467,11 +493,103 @@ document.getElementById("exportBtn").onclick=()=>{
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").addEventListener("change",async e=>{
   const f=e.target.files[0];if(!f)return;
-  try{const parsed=JSON.parse(await f.text());if(typeof parsed!=="object"||Array.isArray(parsed))throw new Error();saveData(parsed);loadSelectedDate(false);refreshAll();alert("Backup importato.");}
+  try{const parsed=JSON.parse(await f.text());if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error();for(const [key,rec] of Object.entries(parsed)){if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||!normalizeRecord(rec))throw new Error();}saveData(parsed);saveTombstones({});localStorage.removeItem(CLEAR_AT_KEY);loadSelectedDate(false);refreshAll();queueSync();alert("Backup importato. Collega Google per sincronizzarlo.");}
   catch{alert("File non valido.");}
   e.target.value="";
 });
-document.getElementById("clearBtn").onclick=()=>{if(confirm("Vuoi cancellare TUTTI i dati salvati?")){localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(OLD_STORAGE_KEY);loadSelectedDate(false);refreshAll();}};
+document.getElementById("clearBtn").onclick=()=>{if(confirm("Vuoi cancellare TUTTI i dati, anche dal foglio Google alla prossima sincronizzazione?")){localStorage.setItem(CLEAR_AT_KEY,new Date().toISOString());localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(OLD_STORAGE_KEY);loadSelectedDate(false);refreshAll();queueSync();}};
+
+const syncStatus = document.getElementById("syncStatus");
+const syncButton = document.getElementById("syncBtn");
+function setSyncStatus(message){ syncStatus.textContent=message; }
+function validTimestamp(value){ const ms=Date.parse(value||""); return Number.isFinite(ms) ? ms : 0; }
+function parseSheetRow(row, index){
+  const date=String(row[0]||"").trim();
+  if(!date) return null;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Error(`Data non valida alla riga ${index+2}.`);
+  const deleted=String(row[18]||"").trim().toUpperCase()==="SI";
+  const stamp=String(row[17]||"").trim();
+  const base=row.slice(1,9).map(Number), bonus=row.slice(9,17).map(Number);
+  if(!deleted && (base.length!==8||bonus.length!==8||base.some(v=>!Number.isInteger(v)||v<1||v>10)||bonus.some(v=>!Number.isInteger(v)||v<0))) throw Error(`Punteggi non validi alla riga ${index+2}.`);
+  return {date,index,deleted,stamp,base,bonus};
+}
+function sheetRow(date,entry){
+  return [date,...(entry.deleted ? Array(16).fill("") : [...entry.base,...entry.bonus])," "+entry.stamp,entry.deleted?"SI":""];
+}
+async function sheetsRequest(method,path,body){
+  const response=await fetch("https://sheets.googleapis.com/v4/spreadsheets/"+SHEET_ID+path,{
+    method, headers:{"Authorization":"Bearer "+accessToken,"Content-Type":"application/json"},
+    body:body?JSON.stringify(body):undefined
+  });
+  if(!response.ok){
+    if(response.status===401){accessToken=null;tokenExpires=0;syncButton.disabled=true;}
+    const detail=await response.json().catch(()=>({}));
+    throw Error(detail.error?.message||`Google Sheets: errore ${response.status}`);
+  }
+  return response.json();
+}
+async function syncNow(){
+  if(!accessToken||Date.now()>tokenExpires){setSyncStatus("Accesso scaduto: premi Collega Google.");return;}
+  setSyncStatus("Sincronizzazione in corso…");
+  const path="/values/"+encodeURIComponent(SHEET_RANGE);
+  const remote=await sheetsRequest("GET",path+"?valueRenderOption=UNFORMATTED_VALUE");
+  const remoteMap=new Map();
+  (remote.values||[]).forEach((row,index)=>{
+    const parsed=parseSheetRow(row,index);
+    if(parsed){if(remoteMap.has(parsed.date))throw Error("Data duplicata nel foglio: "+parsed.date);remoteMap.set(parsed.date,parsed);}
+  });
+  const data=loadData(), deleted=loadTombstones();
+  const clearAt=localStorage.getItem(CLEAR_AT_KEY);
+  const changes=[], additions=[];
+  const dates=new Set([...Object.keys(data),...Object.keys(deleted),...remoteMap.keys()]);
+  for(const date of [...dates].sort()){
+    const cloud=remoteMap.get(date);
+    let local=data[date] ? {...normalizeRecord(data[date]),deleted:false,stamp:data[date].updatedAt||""} :
+      deleted[date] ? {deleted:true,stamp:deleted[date]} : null;
+    if(clearAt && (!local || validTimestamp(local.stamp)<=validTimestamp(clearAt))) local={deleted:true,stamp:clearAt};
+    const cloudEntry=cloud ? {...cloud,deleted:cloud.deleted,stamp:cloud.stamp} : null;
+    const winner=!local ? cloudEntry : !cloudEntry ? local :
+      validTimestamp(local.stamp)>validTimestamp(cloudEntry.stamp) ? local : cloudEntry;
+    if(!winner) continue;
+    if(winner.deleted){delete data[date];deleted[date]=winner.stamp;}
+    else {data[date]={base:winner.base,bonus:winner.bonus,updatedAt:winner.stamp||null};delete deleted[date];}
+    if(winner===local && (!cloudEntry || JSON.stringify(sheetRow(date,local))!==JSON.stringify(sheetRow(date,cloudEntry)))){
+      const values=sheetRow(date,local);
+      if(cloud) changes.push({range:`Giornate!A${cloud.index+2}:S${cloud.index+2}`,values:[values]});
+      else additions.push(values);
+    }
+  }
+  if(changes.length) await sheetsRequest("POST","/values:batchUpdate",{valueInputOption:"RAW",data:changes});
+  if(additions.length) await sheetsRequest("POST",path+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",{values:additions});
+  saveData(data);saveTombstones(deleted);
+  loadSelectedDate(false);refreshAll();
+  syncButton.disabled=false;
+  setSyncStatus(`Sincronizzato alle ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}. ${Object.keys(data).length} giornate.`);
+}
+function queueSync(){
+  if(!accessToken) return;
+  syncQueue=syncQueue.catch(()=>{}).then(syncNow).catch(error=>setSyncStatus("Sincronizzazione non riuscita: "+error.message+". I dati locali restano salvati."));
+}
+document.getElementById("connectBtn").onclick=()=>{
+  if(GOOGLE_CLIENT_ID.startsWith("INSERISCI_")){
+    setSyncStatus("Configurazione Google mancante: inserisci il tuo ID client OAuth nel file index.html.");return;
+  }
+  if(!window.google?.accounts?.oauth2){setSyncStatus("Google non è disponibile. Controlla la connessione e riprova.");return;}
+  if(!tokenClient) tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CLIENT_ID,scope:SHEETS_SCOPE,
+    callback:response=>{
+      if(response.error){setSyncStatus("Accesso Google non riuscito: "+response.error);return;}
+      accessToken=response.access_token;
+      tokenExpires=Date.now()+(Number(response.expires_in)||3300)*1000-60000;
+      syncButton.disabled=false;
+      queueSync();
+    }
+  });
+  tokenClient.requestAccessToken({prompt:accessToken?"":"consent"});
+};
+syncButton.onclick=queueSync;
+window.addEventListener("online",queueSync);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)queueSync();});
 function refreshAll(){refreshSummary();drawRadar();renderCategoryAverages();renderHistory();}
 loadSelectedDate(false);refreshAll();
 </script>
